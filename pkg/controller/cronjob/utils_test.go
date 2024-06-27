@@ -620,6 +620,8 @@ func TestNextScheduleTimeDuration(t *testing.T) {
 	metav1TopOfTheHour := metav1.NewTime(*topOfTheHour())
 	metav1HalfPastTheHour := metav1.NewTime(*deltaTimeAfterTopOfTheHour(30 * time.Minute))
 	metav1TwoHoursLater := metav1.NewTime(*deltaTimeAfterTopOfTheHour(2 * time.Hour))
+	metav1FiveDaysEarlier := metav1.NewTime(*deltaTimeAfterTopOfTheHour(-141 * time.Hour))
+	metav1SixteenHoursEarlier := metav1.NewTime(*deltaTimeAfterTopOfTheHour(-17 * time.Hour))
 
 	tests := []struct {
 		name             string
@@ -627,6 +629,25 @@ func TestNextScheduleTimeDuration(t *testing.T) {
 		now              time.Time
 		expectedDuration time.Duration
 	}{
+		{
+			// this test case covers a specific bug present in past releases, where the
+			// returned duration was negative.
+			// see https://github.com/kubernetes/kubernetes/issues/118789 for details.
+			name: "run every hour and on the 55th minute, long running job",
+			cj: &batchv1.CronJob{
+				ObjectMeta: metav1.ObjectMeta{
+					CreationTimestamp: metav1FiveDaysEarlier,
+				},
+				Spec: batchv1.CronJobSpec{
+					Schedule: "0/55 * * * *",
+				},
+				Status: batchv1.CronJobStatus{
+					LastScheduleTime: &metav1SixteenHoursEarlier,
+				},
+			},
+			now:              *deltaTimeAfterTopOfTheHour(-33 * time.Minute),
+			expectedDuration: 28*time.Minute + nextScheduleDelta,
+		},
 		{
 			name: "complex schedule skipping weekend",
 			cj: &batchv1.CronJob{
